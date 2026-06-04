@@ -75,3 +75,7 @@ python examples/minimal_mcp_agent/vita_m1_1.py
 ```
 
 The implementation is intentionally modest. It demonstrates typed evidence, risk/status classification, plurality checks, chained receipts, reviewability, and corrective halt behavior without claiming a complete alignment solution.
+
+## Adversarial test posture
+
+The repo now includes a small adversarial test matrix aimed at prompt-injection, jailbreak, prompt-leak, anomalous-output, and never-auto-route cases. These tests are designed as local hardening checks, not endorsements of external jailbreak corpora.
