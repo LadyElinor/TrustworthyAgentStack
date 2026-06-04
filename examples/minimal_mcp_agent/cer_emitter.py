@@ -109,7 +109,16 @@ class CerEmitter:
         print(f"[CER Gate] {gate:22} -> {decision:8} | {justification}")
         return gate_check_id
 
-    def request_confirmation(self, *, step_id: str, scope: str, reason: str) -> bool:
+    def request_confirmation(
+        self,
+        *,
+        step_id: str,
+        scope: str,
+        reason: str,
+        requested_by_gate: Optional[str] = None,
+        requested_action: Optional[str] = None,
+        requested_target: Optional[str] = None,
+    ) -> bool:
         confirmed = self.confirmation_provider.request(step_id=step_id, scope=scope, reason=reason)
         self._append(
             "confirmation",
@@ -119,6 +128,9 @@ class CerEmitter:
                 "scope": scope,
                 "reason": reason,
                 "confirmed": confirmed,
+                "requested_by_gate": requested_by_gate,
+                "requested_action": requested_action,
+                "requested_target": requested_target,
                 "created_at": utc_now(),
             },
         )

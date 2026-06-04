@@ -87,3 +87,31 @@ def test_escalation_without_confirmation_or_block_fails(tmp_path):
     result = validate_cer_export(str(broken_path))
     assert result["valid"] is False
     assert any("escalation lacks confirmation" in v for v in result["violations"])
+
+
+def test_confirmation_gate_linkage_mismatch_fails(tmp_path):
+    export_path = run_demo(output_dir=str(tmp_path), approve_confirmation=True)
+    records = _read_jsonl(export_path)
+    for rec in records:
+        if rec["record_type"] == "confirmation":
+            rec["payload"]["requested_by_gate"] = "least_privilege"
+            rec["provenance_hash"] = deterministic_hash(rec["payload"])
+            break
+    broken_path = tmp_path / "bad_confirmation_gate.jsonl"
+    _write_jsonl(broken_path, records)
+    result = validate_cer_export(str(broken_path))
+    assert result["valid"] is False
+    assert any("gate linkage" in v for v in result["violations"])
+
+
+def test_confirmation_after_external_action_fails(tmp_path):
+    export_path = run_demo(output_dir=str(tmp_path), approve_confirmation=True)
+    records = _read_jsonl(export_path)
+    confirmation_index = next(i for i, rec in enumerate(records) if rec["record_type"] == "confirmation")
+    external_index = next(i for i, rec in enumerate(records) if rec["record_type"] == "external_action")
+    records[confirmation_index], records[external_index] = records[external_index], records[confirmation_index]
+    broken_path = tmp_path / "bad_confirmation_order.jsonl"
+    _write_jsonl(broken_path, records)
+    result = validate_cer_export(str(broken_path))
+    assert result["valid"] is False
+    assert any("confirmation appears after external action" in v for v in result["violations"])

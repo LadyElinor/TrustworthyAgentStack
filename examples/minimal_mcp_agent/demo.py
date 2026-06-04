@@ -41,6 +41,9 @@ def run_demo(output_dir: Optional[str] = None, approve_confirmation: bool = True
             step_id=step_id,
             scope="external_action",
             reason="High-risk or irreversible action requires explicit approval",
+            requested_by_gate="consent_traceability",
+            requested_action="write_file",
+            requested_target="external_filesystem",
         )
         if not confirmed:
             emitter.log_external_action(step_id=step_id, action="write_file", target="external_filesystem", status="blocked")

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List
 
 try:
     from .cer_emitter import VALID_DECISIONS, VALID_GATES
@@ -69,11 +69,23 @@ def _validate_payload(record: Dict[str, Any], line_num: int) -> List[str]:
             violations.append(f"Line {line_num}: confidence outside [0,1]")
 
     elif record_type == "confirmation":
-        for field in ("confirmation_id", "step_id", "scope", "confirmed", "created_at"):
+        for field in (
+            "confirmation_id",
+            "step_id",
+            "scope",
+            "reason",
+            "confirmed",
+            "requested_by_gate",
+            "requested_action",
+            "requested_target",
+            "created_at",
+        ):
             if field not in payload:
                 violations.append(f"Line {line_num}: confirmation payload missing {field}")
         if not isinstance(payload.get("confirmed"), bool):
             violations.append(f"Line {line_num}: confirmation.confirmed must be boolean")
+        if payload.get("requested_by_gate") is not None and payload.get("requested_by_gate") not in VALID_GATES:
+            violations.append(f"Line {line_num}: confirmation requested_by_gate is invalid")
 
     elif record_type == "external_action":
         for field in ("external_action_id", "step_id", "action", "target", "status", "created_at"):
@@ -90,19 +102,46 @@ def _validate_cross_record_invariants(records: List[Dict[str, Any]]) -> List[str
     escalated_steps = set()
     confirmed_steps = set()
     blocked_steps = set()
+    escalated_gates_by_step: Dict[str, set[str]] = {}
+    confirmation_by_step: Dict[str, Dict[str, Any]] = {}
+    external_action_by_step: Dict[str, Dict[str, Any]] = {}
 
-    for record in records:
+    for index, record in enumerate(records):
         payload = record["payload"]
+        step_id = payload.get("step_id")
         if record["record_type"] == "gate_check" and payload.get("decision") == "escalate":
-            escalated_steps.add(payload.get("step_id"))
-        if record["record_type"] == "confirmation" and payload.get("confirmed") is True:
-            confirmed_steps.add(payload.get("step_id"))
-        if record["record_type"] == "external_action" and payload.get("status") == "blocked":
-            blocked_steps.add(payload.get("step_id"))
+            escalated_steps.add(step_id)
+            escalated_gates_by_step.setdefault(step_id, set()).add(payload.get("gate"))
+        if record["record_type"] == "confirmation":
+            confirmation_by_step[step_id] = {"index": index, "payload": payload}
+            if payload.get("confirmed") is True:
+                confirmed_steps.add(step_id)
+        if record["record_type"] == "external_action":
+            external_action_by_step[step_id] = {"index": index, "payload": payload}
+            if payload.get("status") == "blocked":
+                blocked_steps.add(step_id)
 
     for step_id in escalated_steps:
         if step_id not in confirmed_steps and step_id not in blocked_steps:
             violations.append(f"Step {step_id}: escalation lacks confirmation or blocked action record")
+
+        confirmation = confirmation_by_step.get(step_id)
+        action_record = external_action_by_step.get(step_id)
+        gates = escalated_gates_by_step.get(step_id, set())
+
+        if confirmation:
+            requested_gate = confirmation["payload"].get("requested_by_gate")
+            if requested_gate is not None and requested_gate not in gates:
+                violations.append(f"Step {step_id}: confirmation gate linkage does not match escalated gates")
+            if action_record and confirmation["index"] > action_record["index"]:
+                violations.append(f"Step {step_id}: confirmation appears after external action record")
+            requested_action = confirmation["payload"].get("requested_action")
+            requested_target = confirmation["payload"].get("requested_target")
+            if action_record:
+                if requested_action and requested_action != action_record["payload"].get("action"):
+                    violations.append(f"Step {step_id}: confirmation requested_action does not match external action")
+                if requested_target and requested_target != action_record["payload"].get("target"):
+                    violations.append(f"Step {step_id}: confirmation requested_target does not match external action")
 
     return violations
 
